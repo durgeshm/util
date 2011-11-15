@@ -62,7 +62,7 @@ class Project(info: ProjectInfo)
     extends StandardProject(info)
     with ProjectDefaults
   {
-    val scalaTools = "org.scala-lang" % "scala-compiler" % "2.8.1" % "compile"
+    val scalaTools = "org.scala-lang" % "scala-compiler" % "2.9.1" % "compile"
     override def filterScalaJars = false
   }
 
@@ -92,7 +92,7 @@ class Project(info: ProjectInfo)
     extends StandardProject(info)
     with ProjectDefaults
   {
-    val compileWithSpecs = "org.scala-tools.testing" % "specs_2.8.1" % "1.6.8" % "provided"
+    val compileWithSpecs = "org.scala-tools.testing" % "specs_2.9.1" % "1.6.9" % "provided"
   }
 
   class ThriftProject(info: ProjectInfo)
@@ -120,7 +120,7 @@ class Project(info: ProjectInfo)
     with ProjectDependencies
     with DefaultRepos
   {
-    val specs   = "org.scala-tools.testing" % "specs_2.8.1" % "1.6.8" % "test" withSources()
+    val specs   = "org.scala-tools.testing" % "specs_2.9.1" % "1.6.9" % "test" withSources()
     val mockito = "org.mockito"             % "mockito-all" % "1.8.5" % "test" withSources()
     val junit   = "junit"                   %       "junit" % "3.8.2" % "test"
 
