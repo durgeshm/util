@@ -7,46 +7,52 @@ class Project(info: ProjectInfo)
   with ParentProjectDependencies
   with DefaultRepos
 {
+  val localMaven = Resolver.file("Local Maven repository", new java.io.File(Path.userHome+"/.m2/repository"))
+  val publishTo = localMaven 
+ 
   override def subversionRepository = Some("https://svn.twitter.biz/maven-public")
   val twitterRepo = "twitter.com" at "http://maven.twttr.com"
+
+  val specsVersion = "1.6.9" 
+  val versionSuffix = "_" + buildScalaVersion
 
   // Projects
 
   // util-core: extensions with no external dependency requirements
   val coreProject = project(
-    "util-core", "util-core",
+    "util-core", "util-core" + versionSuffix,
     new CoreProject(_))
 
   val evalProject = project(
-    "util-eval", "util-eval",
+    "util-eval", "util-eval" + versionSuffix,
     new EvalProject(_), coreProject)
 
   val codecProject = project(
-    "util-codec", "util-codec",
+    "util-codec", "util-codec" + versionSuffix,
     new CodecProject(_), coreProject)
 
   val collectionProject = project(
-    "util-collection", "util-collection",
+    "util-collection", "util-collection" + versionSuffix,
     new CollectionProject(_), coreProject)
 
   // util-reflect: runtime reflection and dynamic helpers
   val reflectProject = project(
-    "util-reflect", "util-reflect",
+    "util-reflect", "util-reflect" + versionSuffix,
     new ReflectProject(_), coreProject)
 
   // util-logging: logging wrappers and configuration
   val loggingProject = project(
-    "util-logging", "util-logging",
+    "util-logging", "util-logging" + versionSuffix,
     new LoggingProject(_), coreProject)
 
   // util-thrift: thrift (serialization) utilities
   val thriftProject = project(
-    "util-thrift", "util-thrift",
+    "util-thrift", "util-thrift" + versionSuffix,
     new ThriftProject(_), coreProject, codecProject)
 
   // util-hashing: hashing and distribution utilities
   val hashingProject = project(
-    "util-hashing", "util-hashing",
+    "util-hashing", "util-hashing" + versionSuffix,
     new HashingProject(_), coreProject)
 
 
@@ -61,7 +67,7 @@ class Project(info: ProjectInfo)
     extends StandardProject(info)
     with ProjectDefaults
   {
-    val scalaTools = "org.scala-lang" % "scala-compiler" % "2.9.1" % "compile"
+    val scalaTools = "org.scala-lang" % "scala-compiler" % buildScalaVersion % "compile"
     override def filterScalaJars = false
   }
 
@@ -91,7 +97,7 @@ class Project(info: ProjectInfo)
     extends StandardProject(info)
     with ProjectDefaults
   {
-    val compileWithSpecs = "org.scala-tools.testing" % "specs_2.9.1" % "1.6.9" % "provided"
+    val compileWithSpecs = "org.scala-tools.testing" %% "specs" % specsVersion % "provided"
   }
 
   class ThriftProject(info: ProjectInfo)
@@ -119,7 +125,7 @@ class Project(info: ProjectInfo)
     with ProjectDependencies
     with DefaultRepos
   {
-    val specs   = "org.scala-tools.testing" % "specs_2.9.1" % "1.6.9" % "test" withSources()
+    val specs   = "org.scala-tools.testing" %% "specs" % specsVersion % "test" withSources()
     val mockito = "org.mockito"             % "mockito-all" % "1.8.5" % "test" withSources()
     val junit   = "junit"                   %       "junit" % "3.8.2" % "test"
 
