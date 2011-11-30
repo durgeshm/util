@@ -1,5 +1,6 @@
 import sbt._
 import com.twitter.sbt._
+import Configurations._
 
 class Project(info: ProjectInfo)
   extends StandardParentProject(info)
@@ -10,6 +11,8 @@ class Project(info: ProjectInfo)
   val localMaven = Resolver.file("Local Maven repository", new java.io.File(Path.userHome+"/.m2/repository"))
   val publishTo = localMaven 
  
+  override def usesMavenStyleBasePatternInPublishLocalConfiguration = true
+  
   override def subversionRepository = Some("https://svn.twitter.biz/maven-public")
   val twitterRepo = "twitter.com" at "http://maven.twttr.com"
 
@@ -55,7 +58,6 @@ class Project(info: ProjectInfo)
     "util-hashing", "util-hashing" + versionSuffix,
     new HashingProject(_), coreProject)
 
-
   class CoreProject(info: ProjectInfo)
     extends StandardProject(info)
     with ProjectDefaults
@@ -90,6 +92,9 @@ class Project(info: ProjectInfo)
     extends StandardProject(info)
     with ProjectDefaults
   {
+    val asm = "asm" % "asm" % "3.3.1"
+    val asmUtil = "asm" % "asm-util" % "3.3.1"
+    val asmCommons = "asm" % "asm-commons" % "3.3.1"
     val cglib = "cglib" % "cglib" % "2.2"
   }
 

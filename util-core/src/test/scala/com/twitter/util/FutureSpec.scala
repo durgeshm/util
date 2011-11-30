@@ -4,7 +4,6 @@ import org.specs.Specification
 import org.specs.mock.Mockito
 import com.twitter.conversions.time._
 import java.util.concurrent.ConcurrentLinkedQueue
-import com.twitter.concurrent.SimpleSetter
 
 class FutureSpec extends Specification with Mockito {
   implicit def futureMatcher[A](future: Future[A]) = new {
@@ -327,6 +326,47 @@ class FutureSpec extends Specification with Mockito {
         jf.get() must throwA(new RuntimeException())
       }
     }
+
+    "monitored" in {
+      val inner = new Promise[Int]
+      val exc = new Exception("some exception")
+      "catch raw exceptions (direct)" in {
+        val f = Future.monitored {
+          throw exc
+          inner
+        }
+        f.poll must beSome(Throw(exc))
+      }
+
+      "catch raw exceptions (indirect), cancelling computation" in {
+        val inner1 = new Promise[Int]
+        var ran = false
+        val f = Future.monitored {
+          inner1 ensure {
+            throw exc
+          }
+          inner1 ensure {
+            ran = true
+            inner.update(Return(1)) mustNot throwA[Throwable]
+          }
+          inner
+        }
+        ran must beFalse
+        f.poll must beNone
+        inner.isCancelled must beFalse
+        inner1.update(Return(1)) mustNot throwA[Throwable]
+        ran must beTrue
+        f.poll must beSome(Throw(exc))
+        inner.isCancelled must beTrue
+      }
+
+      "link" in {
+        val f = Future.monitored { inner }
+        inner.isCancelled must beFalse
+        f.cancel()
+        inner.isCancelled must beTrue
+      }
+    }
   }
 
   "Promise" should {
@@ -366,6 +406,70 @@ class FutureSpec extends Specification with Mockito {
       }
     }
 
+    "transform" in {
+      val e = new Exception("rdrr")
+
+      "values" in {
+        Future.value(1).transform {
+          case Return(v) => Future.value(v + 1)
+          case Throw(t) => Future.value(0)
+        } mustProduce(Return(2))
+      }
+
+      "exceptions" in {
+        Future.exception(e).transform {
+          case Return(_) => Future.value(1)
+          case Throw(t) => Future.value(0)
+        } mustProduce(Return(0))
+      }
+
+      "exceptions thrown during transformation" in {
+        Future.value(1).transform {
+          case Return(v) => Future.value(throw e)
+          case Throw(t) => Future.value(0)
+        } mustProduce(Throw(e))
+      }
+    }
+
+    "transformedBy" in {
+      val e = new Exception("rdrr")
+
+      "flatMap" in {
+        Future.value(1).transformedBy(new FutureTransformer[Int, Int] {
+          override def flatMap(value: Int) = Future.value(value + 1)
+          override def rescue(t: Throwable) = Future.value(0)
+        }) mustProduce(Return(2))
+      }
+
+      "rescue" in {
+        Future.exception(e).transformedBy(new FutureTransformer[Int, Int] {
+          override def flatMap(value: Int) = Future.value(value + 1)
+          override def rescue(t: Throwable) = Future.value(0)
+        }) mustProduce(Return(0))
+      }
+
+      "exceptions thrown during transformation" in {
+        Future.value(1).transformedBy(new FutureTransformer[Int, Int] {
+          override def flatMap(value: Int) = throw e
+          override def rescue(t: Throwable) = Future.value(0)
+        }) mustProduce(Throw(e))
+      }
+
+      "map" in {
+        Future.value(1).transformedBy(new FutureTransformer[Int, Int] {
+          override def map(value: Int) = value + 1
+          override def handle(t: Throwable) = 0
+        }) mustProduce(Return(2))
+      }
+
+      "handle" in {
+        Future.exception(e).transformedBy(new FutureTransformer[Int, Int] {
+          override def map(value: Int) = value + 1
+          override def handle(t: Throwable) = 0
+        }) mustProduce(Return(0))
+      }
+    }
+
     "flatMap" in {
       "successes" in {
         val f = Future(1) flatMap { x => Future(x + 1) }
@@ -378,16 +482,30 @@ class FutureSpec extends Specification with Mockito {
           f mustProduce Return(2)
         }
 
-        "cancellation" in {
-          val f1 = new Promise[Int]
-          val f2 = Future(2)
-          val f = f1 flatMap { _ => f2 }
-          f1.isCancelled must beFalse
-          f2.isCancelled must beFalse
-          f.cancel()
-          f1.isCancelled must beTrue
-          f1() = Return(2)
-          f2.isCancelled must beTrue
+        "cancellation of the produced future" in {
+          "before the antecedent Future obtains, propagates back to the antecedent" in {
+            val f1 = new Promise[Int]
+            val f2 = Future(2)
+            val f = f1 flatMap { _ => f2 }
+            f1.isCancelled must beFalse
+            f2.isCancelled must beFalse
+            f.cancel()
+            f1.isCancelled must beTrue
+            f1() = Return(2)
+            f2.isCancelled must beTrue
+          }
+
+          "after the antecedent Future obtains, does not propagate back to the antecedent" in {
+            val f1 = new Promise[Int]
+            val f2 = Future(2)
+            val f = f1 flatMap { _ => f2 }
+            f1.isCancelled must beFalse
+            f2.isCancelled must beFalse
+            f1() = Return(2)
+            f.cancel()
+            f1.isCancelled must beFalse
+            f2.isCancelled must beTrue
+          }
         }
       }
 
@@ -477,17 +595,31 @@ class FutureSpec extends Specification with Mockito {
         }
       }
 
-      "cancellation" in {
-        val f1 = new Promise[Int]
-        val f2 = Future(2)
-        val f = f1 rescue { case _ => f2 }
-        f1.isCancelled must beFalse
-        f2.isCancelled must beFalse
-        f.cancel()
-        f1.isCancelled must beTrue
-        f2.isCancelled must beFalse
-        f1() = Throw(new Exception)
-        f2.isCancelled must beTrue
+      "cancellation of the produced future" in {
+        "before the antecedent Future obtains, propagates back to the antecedent" in {
+          val f1 = new Promise[Int]
+          val f2 = Future(2)
+          val f = f1 rescue { case _ => f2 }
+          f1.isCancelled must beFalse
+          f2.isCancelled must beFalse
+          f.cancel()
+          f1.isCancelled must beTrue
+          f2.isCancelled must beFalse
+          f1() = Throw(new Exception)
+          f2.isCancelled must beTrue
+        }
+
+        "after the antecedent Future obtains, does not propagate back to the antecedent" in {
+          val f1 = new Promise[Int]
+          val f2 = Future(2)
+          val f = f1 rescue { case _ => f2 }
+          f1.isCancelled must beFalse
+          f2.isCancelled must beFalse
+          f1() = Throw(new Exception)
+          f.cancel()
+          f1.isCancelled must beFalse
+          f2.isCancelled must beTrue
+        }
       }
     }
 
@@ -521,6 +653,25 @@ class FutureSpec extends Specification with Mockito {
         f()= Return(1)
         wasCalledWith mustEqual Some(1)
       }
+
+      "monitor exceptions" in {
+        val m = spy(new MonitorSpec.MockMonitor)
+        val exc = new Exception
+        m.handle(any) returns true
+        val p = new Promise[Int]
+
+        m {
+          p ensure { throw exc }
+        }
+
+        there was no(m).handle(any)
+        p.update(Return(1)) mustNot throwA[Throwable]
+        there was one(m).handle(exc)
+      }
+    }
+
+    "willEqual" in {
+      (Future.value(1) willEqual(Future.value(1)))(1.second) must beTrue
     }
 
     "Future() handles exceptions" in {
